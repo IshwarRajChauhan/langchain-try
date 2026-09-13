@@ -1,0 +1,7 @@
+langgraph
+langchain-core
+langchain-groq
+python-dotenv
+langsmith
+typing-extensions
+langgraph-cli[inmem]
