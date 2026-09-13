@@ -1,0 +1,16 @@
+[project]
+name = "7-multi-agents"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.13"
+dependencies = [
+    "langchain>=1.4.0",
+    "langchain-community>=0.4.2",
+    "langchain-core>=1.6.2",
+    "langchain-groq>=1.1.3",
+    "langchain-tavily>=0.2.18",
+    "langgraph>=1.2.11",
+    "python-dotenv>=1.2.3",
+    "tavily-python>=0.8.1",
+]
