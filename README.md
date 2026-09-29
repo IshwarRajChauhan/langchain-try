@@ -1,48 +1,48 @@
-# Multimodal RAG over PDFs (CLIP + FAISS + Groq)
+# Multimodal RAG on PDFs
 
-A retrieval-augmented generation pipeline that answers questions about a PDF using both its **text and its images**. Text chunks and embedded images are placed in the same CLIP vector space, retrieved together with FAISS, and passed to a vision-capable LLM on Groq.
+Ask questions about a PDF and get answers that use both the text and the images in it. Text chunks and images are turned into vectors with CLIP, stored in FAISS, and the best matches are sent to an LLM on Groq.
 
 ## How it works
 
 ```mermaid
 flowchart LR
     A[PDF] --> B[PyMuPDF]
-    B --> C[Text per page]
-    B --> D[Embedded images]
-    C --> E[Recursive splitter<br/>500 chars / 100 overlap]
-    E --> F[CLIP text embeddings]
-    D --> G[CLIP image embeddings<br/>+ base64 store]
-    F --> H[(FAISS index)]
+    B --> C[Text]
+    B --> D[Images]
+    C --> E[Split into chunks]
+    E --> F[CLIP text vectors]
+    D --> G[CLIP image vectors]
+    F --> H[(FAISS)]
     G --> H
-    Q[User query] --> I[CLIP text embedding]
+    Q[Your question] --> I[CLIP text vector]
     I --> H
-    H -->|top-k text + images| J[Multimodal prompt]
+    H -->|top 5 matches| J[Prompt with text + images]
     J --> K[Groq LLM]
     K --> L[Answer]
 ```
 
-1. **Ingest**: PyMuPDF extracts text and embedded images from every page.
-2. **Chunk**: page text is split with `RecursiveCharacterTextSplitter` (500 chars, 100 overlap).
-3. **Embed**: `openai/clip-vit-base-patch32` embeds text chunks and images into one shared, normalized vector space.
-4. **Index**: all vectors go into a single FAISS store, with metadata (`page`, `type`, `image_id`).
-5. **Retrieve**: the query is embedded with CLIP and the top-k nearest text chunks and images are returned.
-6. **Generate**: retrieved text and base64 images are assembled into one multimodal message and sent to a Groq-hosted model.
+1. PyMuPDF pulls the text and images out of each page.
+2. Text is split into chunks (500 characters, 100 overlap).
+3. CLIP (`openai/clip-vit-base-patch32`) turns both text and images into vectors in the same space, so one search covers both.
+4. Everything goes into one FAISS index, with page number and type saved alongside.
+5. Your question is turned into a vector and the 5 closest matches are fetched.
+6. The matched text and images (as base64) go to the LLM in a single message, and it answers.
 
-## Tech stack
+## Tech used
 
 - Python 3.13+
 - PyMuPDF, Pillow
-- Hugging Face Transformers (CLIP), PyTorch
-- LangChain (`langchain-core`, `langchain-community`, `langchain-text-splitters`, `langchain-groq`)
+- Transformers + PyTorch (CLIP)
+- LangChain (core, community, text splitters, Groq)
 - FAISS (CPU)
 - python-dotenv
 
-## Project structure
+## Files
 
 ```
 .
-├── main.py                 # ingestion, retrieval and generation pipeline
-├── multimodal_sample.pdf   # sample PDF (revenue report with a bar chart)
+├── main.py                 # the whole pipeline
+├── multimodal_sample.pdf   # sample PDF with a bar chart
 ├── requirements.txt
 ├── pyproject.toml
 ├── uv.lock
@@ -57,7 +57,7 @@ git clone -b multi-modal-rag https://github.com/IshwarRajChauhan/langchain-try.g
 cd langchain-try
 ```
 
-Using **uv** (recommended, lockfile included):
+With uv:
 
 ```bash
 uv sync
@@ -71,23 +71,23 @@ source .venv/bin/activate      # Windows: .venv\Scripts\activate
 pip install -r requirements.txt
 ```
 
-Create a `.env` file in the project root:
+Make a `.env` file:
 
 ```env
 GROQ_API_KEY=your_groq_api_key
 ```
 
-Get a key from the [Groq Console](https://console.groq.com/).
+You can get a key from the [Groq Console](https://console.groq.com/).
 
-## Usage
+## Run it
 
 ```bash
 uv run main.py        # or: python main.py
 ```
 
-The CLIP model is downloaded from Hugging Face on first run.
+The CLIP model downloads the first time you run it.
 
-`main.py` indexes `multimodal_sample.pdf` and runs three example queries:
+It loads `multimodal_sample.pdf` and runs three example questions:
 
 ```
 What does the chart on page 2 show about revenue trends?
@@ -95,37 +95,36 @@ Summarize the main findings from the document
 What visual elements are present in the document?
 ```
 
-Each query prints the retrieved chunks (text preview or image, with page number) followed by the model's answer.
+For each one it prints what it found (text preview or image, with page number), then the answer.
 
-To use your own PDF or questions, edit `pdf_path` and the `queries` list in `main.py`. To query programmatically:
+To use your own PDF or questions, change `pdf_path` and the `queries` list in `main.py`. You can also call it directly:
 
 ```python
-answer = multimodal_pdf_rag_pipeline("What does the bar chart show?")
-print(answer)
+print(multimodal_pdf_rag_pipeline("What does the bar chart show?"))
 ```
 
-## Configuration
+## Settings you can change
 
-| Setting | Where | Default |
+| What | Where | Default |
 | --- | --- | --- |
-| PDF path | `pdf_path` | `multimodal_sample.pdf` |
+| PDF | `pdf_path` | `multimodal_sample.pdf` |
 | Chunk size / overlap | `RecursiveCharacterTextSplitter` | 500 / 100 |
-| Top-k retrieved | `retrieve_multimodal(query, k=5)` | 5 |
+| Results returned | `retrieve_multimodal(query, k=5)` | 5 |
 | Embedding model | `CLIPModel.from_pretrained` | `openai/clip-vit-base-patch32` |
-| LLM | `ChatGroq(model=...)` | `qwen/qwen3.6-27b`, temperature 0, 800 max tokens |
+| LLM | `ChatGroq(model=...)` | `qwen/qwen3.6-27b`, temp 0, 800 max tokens |
 
-The LLM must accept image input, since retrieved images are sent as base64 `image_url` content.
+The LLM has to accept images, since matched images are sent along with the text.
 
-## Known limitations
+## Things to know
 
-- CLIP's text encoder truncates at 77 tokens, so long chunks are only partly embedded. Smaller chunks give better retrieval.
-- Only embedded raster images are extracted. Vector graphics and scanned pages are not.
-- The index is rebuilt in memory on every run and is not persisted.
-- Page numbers in metadata are 0-indexed.
+- CLIP only reads the first 77 tokens of a text chunk, so longer chunks get cut off. Smaller chunks work better.
+- It only picks up normal embedded images. Drawn graphics and scanned pages are missed.
+- The index is rebuilt every run. Nothing is saved.
+- Page numbers start at 0.
 
-## Roadmap
+## To do
 
-- [ ] Persist the FAISS index to disk
-- [ ] CLI or Streamlit interface for uploading PDFs and asking questions
-- [ ] Re-ranking of retrieved results
-- [ ] Support for tables and scanned pages (OCR)
+- [ ] Save the FAISS index to disk
+- [ ] Simple UI to upload a PDF and ask questions
+- [ ] Re-rank the results
+- [ ] Handle tables and scanned pages (OCR)
